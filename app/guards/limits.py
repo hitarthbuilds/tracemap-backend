@@ -1,4 +1,4 @@
-import signal
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 
 class ExecutionTimeout(Exception):
@@ -6,17 +6,14 @@ class ExecutionTimeout(Exception):
     pass
 
 
-def _timeout_handler(signum, frame):
-    raise ExecutionTimeout("Execution time limit exceeded")
-
-
 def run_with_timeout(fn, seconds: int = 2):
     """
     Run a function with a hard execution time limit.
+    Thread-safe. Works inside FastAPI.
     """
-    signal.signal(signal.SIGALRM, _timeout_handler)
-    signal.alarm(seconds)
-    try:
-        return fn()
-    finally:
-        signal.alarm(0)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(fn)
+        try:
+            return future.result(timeout=seconds)
+        except TimeoutError:
+            raise ExecutionTimeout("Execution time limit exceeded")
